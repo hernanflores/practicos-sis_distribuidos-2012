@@ -1,14 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
-#define MAX_DIGITOS 9
+#define MAX_DIGITOS 99
 /*
 	FUNCIONES AUXILIARES
 */
 void limpiar_cadena(char *cadena)
 {
   char *p;
-  p = strchr (cadena, '\n');
+  p = strchr(cadena, '\n');
   if(p){
   	*p = '\0';
   }
@@ -18,32 +19,32 @@ void limpiar_cadena(char *cadena)
 	Imprime los nodos intermedio (el camino) para llegar al nodo destino
 	desde del nodo origen.
 */
-void routear(char *src, char *dst, char *dim){
+void routear(char *src, char *dst){
 
-	//dependiendo de la dimension, tengo que paddear el string
-	printf("|%10s-|", "Hello");
+	int dim = strlen(dst);
 
-	//llegue?
-	while(src != dst){
-		//xoreo
-		//cambio bit menos significativo
-		//imprimo
-		printf "Nodo: "%s"n", nodo_actual);	
-	}
-	
+	int i = 0;
+    while(i < dim){
+        if(src[i] != dst[i]){
+            if(src[i] == '0'){
+            	src[i] = '1';
+            }
+            else{
+            	src[i] = '0';
+            }
+            
+            printf("Nodo intermedio: %s \n", src);
+        }
+        i++;
+    }
 }
 
 /*
-	Lee el nro de dimensiones y los nodos origen y destino desde el teclado.
+	Lee los nodos origen y destino desde el teclado.
 */
 int main(int argc, char *argv[]) {
-	char c_dimension[MAX_DIGITOS];
 	char c_origen[MAX_DIGITOS];
 	char c_destino[MAX_DIGITOS];
-
-	printf("Dimensiones del hipercubo: ");
-	fgets(c_dimension, MAX_DIGITOS, stdin);
-	limpiar_cadena(c_dimension);
 
 	printf("Nodo origen: ");
 	fgets(c_origen, MAX_DIGITOS, stdin);
@@ -53,7 +54,13 @@ int main(int argc, char *argv[]) {
 	fgets(c_destino, MAX_DIGITOS, stdin);
 	limpiar_cadena(c_destino);
 
-	routear(c_origen, c_destino, c_dimension);
+	if(strlen(c_destino) != strlen(c_origen)){
+		printf("%s\n", "ERROR: Nodos de distinta dimension");
+        return (EXIT_FAILURE);
+    }
 
+	printf("%s\n", "Routeando...");
+	routear(c_origen, c_destino);
+	printf("%s\n", "COMPLETADO.");
 	return 0;
 }
