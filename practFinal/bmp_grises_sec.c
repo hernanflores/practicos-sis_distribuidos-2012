@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <time.h>
 
 typedef struct bmp_file_header
 {
@@ -33,8 +34,11 @@ void to_grayscale(bmp_info_header *info, unsigned char *img);
 void save_bmp(char *file_name, bmp_info_header *info, unsigned char *imgdata);
 
 bmp_file_header g_header;
-int main()
-{
+int main(int argc, char **argv){
+  clock_t t_ini, t_fin;
+  double secs;
+
+  t_ini = clock();
   bmp_info_header info;
   bmp_info_header info2;
   unsigned char *img;
@@ -54,6 +58,11 @@ int main()
   save_bmp("test-grey.bmp", &info, img);
 
   free(img);
+  free(img2);
+  t_fin = clock();
+
+  secs = (double)(t_fin - t_ini) / CLOCKS_PER_SEC;
+  printf("%.16g milisegundos\n", secs * 1000.0);
   return 0;
 }
 
@@ -61,10 +70,10 @@ void mix(bmp_info_header *info, bmp_info_header *info2, unsigned char *img, unsi
 {
   unsigned int r,g,b;
   unsigned int r2,g2,b2;
-
+  uint32_t i,j;
   /* recorremos la imagen */
-  for (uint32_t i=0; i<info->height; i++){
-    for (uint32_t j=0; j<info->width; j++){
+  for (i=0; i<info->height; i++){
+    for (j=0; j<info->width; j++){
       b = img[3*(j+i*info->width)];
       b2 = img2[3*(j+i*info2->width)];
 
@@ -74,7 +83,7 @@ void mix(bmp_info_header *info, bmp_info_header *info2, unsigned char *img, unsi
       r = img[3*(j+i*info->width)+2];
       r2= img2[3*(j+i*info2->width)+2];
 
-      printf("b: %u,b2: %u\n", b,b2);
+     // printf("b: %u,b2: %u\n", b,b2);
       
       b = (b/2+b2/2);
       g = (g/2+g2/2);

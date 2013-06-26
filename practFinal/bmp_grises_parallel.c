@@ -1,7 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+//libs
+#include "mpi.h"
 #include <omp.h>
+#include <time.h>
 
 typedef struct bmp_file_header
 {
@@ -20,7 +23,7 @@ typedef struct bmp_info_header
   uint32_t height;      /* Alto */
   uint16_t planes;          /* Planos de color (Siempre 1) */
   uint16_t bpp;             /* bits por pixel */
-  uint32_t compress;  
+  uint32_t compress;      
   uint32_t imgsize;     /* tamaño de los datos de imagen */
   uint32_t bpmx;        /* Resolución X en bits por metro */
   uint32_t bpmy;        /* Resolución Y en bits por metro */
@@ -29,47 +32,129 @@ typedef struct bmp_info_header
 } bmp_info_header;
 
 unsigned char *load_image(char *filename, bmp_info_header *info_header);
-void to_grayscale(bmp_info_header *info, unsigned char *img);
+unsigned char * mix(int chunksize, int height, unsigned char *img, unsigned char *img2);
 void save_bmp(char *file_name, bmp_info_header *info, unsigned char *imgdata);
 
 bmp_file_header g_header;
+int main(int argc, char *argv[] ){
+  clock_t t_ini, t_fin;
+  double secs;
 
-int main()
-{
+  t_ini = clock();
+
+  //Inicializacion MPI
+  int nproc; /* Numero de procesos */
+  int pid, /* proc actual */
+  chunksize, offset,dest, tag1, tag2, width;
+
+  MPI_Init(&argc, &argv);
+  MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+  MPI_Comm_rank(MPI_COMM_WORLD, &pid);
+  //fin inicializacion MPI
+  printf ("task %d comenzo...\n", pid);
+
   bmp_info_header info;
+  bmp_info_header info2;
   unsigned char *img;
+  unsigned char *img2;
+  unsigned char *localimg;
+  unsigned char *localimg2;
+  tag2 = 1;
+  tag1 = 2;
 
-  img=load_image("test.bmp", &info);
+  //Imagenes del mismo tamaño
+  if (pid == 0) {
+    img   = load_image("A.bmp", &info);
+    img2  = load_image("B.bmp", &info2);
 
-  omp_set_num_threads(3);
-  to_grayscale(&info, img);
-  save_bmp("test-grey.bmp", &info, img);
+    chunksize = (info.imgsize / nproc);
 
-  free(img);
+    localimg =(unsigned char*)malloc(chunksize);
+    localimg2 =(unsigned char*)malloc(chunksize);
+
+    printf("chunksize: %d\n", chunksize);
+  }
+  width = info.width;
+   MPI_Barrier(MPI_COMM_WORLD);
+
+  //scatter entre los procs.
+  MPI_Scatter(
+    img, chunksize, MPI_UNSIGNED_CHAR,      /* envio chunk de imagen */
+    localimg,  chunksize, MPI_UNSIGNED_CHAR,      /* cada proc recibe un chunk de imagen */
+    0, MPI_COMM_WORLD);   /* envia root, a los procs de MPI_COMM_WORLD */
+
+  MPI_Scatter(
+      img2, chunksize, MPI_UNSIGNED_CHAR,
+      localimg2,  chunksize, MPI_UNSIGNED_CHAR,
+      0, MPI_COMM_WORLD);
+  
+  MPI_Bcast(chunksize, 1,MPI_INT,0, MPI_COMM_WORLD);
+  MPI_Bcast(width, 1,MPI_INT,0, MPI_COMM_WORLD);
+  
+  unsigned char * retimg=(unsigned char*)malloc(chunksize);
+  // if(pid > 0){
+    printf("Mezclando...\n");
+    retimg = mix(chunksize, width, localimg, localimg2);
+    /* Esperamos que todos terminen */  
+  // }
+
+  unsigned char * nuimg=(unsigned char*)malloc(info.imgsize);
+  MPI_Gather(retimg, chunksize, MPI_UNSIGNED_CHAR, nuimg, chunksize, MPI_UNSIGNED_CHAR,  0, MPI_COMM_WORLD);
+  
+  MPI_Barrier(MPI_COMM_WORLD);
+
+  if (pid == 0) {
+    printf("Salvando...\n");
+    save_bmp("test-mix.bmp", &info, nuimg);
+
+    free(img);
+    free(img2);
+    free(nuimg);
+  }
+
+  MPI_Finalize();
+  t_fin = clock();
+
+  secs = (double)(t_fin - t_ini) / CLOCKS_PER_SEC;
+  printf("%.16g milisegundos\n", secs * 1000.0);
   return 0;
 }
 
-void to_grayscale(bmp_info_header *info, unsigned char *img)
-{
+//void mix(bmp_info_header *info, bmp_info_header *info2, unsigned char *img, unsigned char *img2)
+unsigned char * mix(int chunksize, int width, unsigned char *img, unsigned char *img2){
   unsigned int r,g,b;
-  int i, j;
+  unsigned int r2,g2,b2;
+  uint32_t j,i;
+  printf("chunksize %d\n", chunksize);
+  printf("width %d\n", width);
   /* recorremos la imagen */
-  #pragma omp for private(j)
-  for (i = 0; i<info->height; i++){
-    for (j = 0; j<info->width; j++){
-      b = (img[3*(j+i*info->width)]);
-      g = (img[3*(j+i*info->width)+1]);
-      r = (img[3*(j+i*info->width)+2]);
+  for (i=0; i<chunksize; i++){
+  //  #pragma omp parallel shared(width,img,img2) private(r,g,b,r2,g2,b2)
+    //{
+      //#pragma omp parallel for
+      for (j=0; j<width; j++){
+        b = img[3*(j+i*width)];
+        b2 = img2[3*(j+i*width)];
 
-      unsigned int average = (b+g+r)/3;
-      //printf("Average de color: %d\n", average);
+        g=img[3*(j+i*width)+1];
+        g2=img2[3*(j+i*width)+1];
 
-      img[3*(j+i*info->width)] = average;
-      img[3*(j+i*info->width)+1] = average;
-      img[3*(j+i*info->width)+2] = average;
-    }
-      
+        r = img[3*(j+i*width)+2];
+        r2= img2[3*(j+i*width)+2];
+        
+        b = (b/2+b2/2);
+        g = (g/2+g2/2);
+        r = (r/2+r2/2);
+        //printf("B:%u,G:%u,R:%u\n", b,g,r);
+        unsigned int average = (b+g+r)/3;
+
+        img[3*(j+i*width)] = average;
+        img[3*(j+i*width)+1] = average;
+        img[3*(j+i*width)+2] = average;
+      }
+    //}
   }
+  return img;
 }
 
 unsigned char *load_image(char *filename, bmp_info_header *info_header){
